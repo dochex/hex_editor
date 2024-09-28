@@ -1,3 +1,5 @@
+mod hexview;
+
 use std::fmt::Write;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read};
@@ -8,12 +10,15 @@ struct HexDoc {
     hex_lines: Vec<String>
 }
 
+
+
+
 fn create_hexdoc(path :&str) -> HexDoc {
     OpenOptions::new().write(true)
         .create(true)
         .open(path).expect("fail to open or create file");
     let buffer = read_file(path);
-    let num_lines = buffer.len() / 16;
+    //let num_lines = buffer.len() / 16;
     let mut hex_doc = HexDoc { first_line: String::new(), hex_lines: Vec::new() };
     let mut header = String::new();
     //---- imprime la ligne des repères hexa ----
@@ -35,7 +40,7 @@ fn create_hexdoc(path :&str) -> HexDoc {
             write!(address, " 0x{:06X} ", n);
         }
         //---------------------------
-        write!(line_bytes, " {:02X}", b);
+        write!(line_bytes, " {:02X}", b).expect("");
         //---- remplace les chars non imprimables -----
         if b > &31 && b < &126 {
             chars_buffer.push(*b);
@@ -74,6 +79,13 @@ fn main() {
     println!("{}", hex_doc.hex_lines.len());
     let a_line = &hex_doc.hex_lines[240];
     println!("{}", get_line_byte(a_line));
+    //-----------------------
+    OpenOptions::new().write(true)
+        .create(true)
+        .open(PATH_FILE).expect("fail to open or create file");
+    let buffer = read_file(PATH_FILE);
+    let view = hexview::HexView::new(buffer);
+    println!("{}", format!("{view}"));
 }
 
 fn get_line_byte(s :&str) -> String{
@@ -89,6 +101,6 @@ fn read_file(path_file: &str) -> Vec<u8> {
     let file = File::open(path_file).unwrap();
     let mut buf_reader = BufReader::new(file);
     buf_reader.read_to_end(&mut contents).expect("fail to read file");
-    return contents;
+    contents
 }
 
