@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use std::fmt::{Display};
 
 struct HexLine{
     address: u32,
@@ -28,7 +28,7 @@ impl HexView {
         };
         let mut n: u32 = 0;
         for chunk in buffer.chunks(16) {
-            let mut line = HexLine {
+            let line = HexLine {
                 address: n,
                 hex_line: chunk.to_vec(),
                 chars_line: chunk.iter().map(|&b| b as char).collect(),
