@@ -21,7 +21,7 @@ impl HexView {
         s.trim_end().to_string()
     }
 
-    pub fn new(buffer: Vec<u8>) -> HexView {
+    pub fn new(buffer: &Vec<u8>) -> HexView {
         let mut hex_view = HexView {
             heading: String::new(),
             hex_lines: Vec::new(),
