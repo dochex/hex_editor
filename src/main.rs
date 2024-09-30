@@ -1,12 +1,27 @@
 mod hexview;
 
-
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::Path;
-use std::process::exit;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use std::vec::Vec;
 
+const MENU_ITEMS: [&str; 3] = ["read a byte", "change some bytes", "exit"];
+
+fn main() {
+    let path_file = get_file_path();
+    let mut buffer = read_file_buffer(&path_file).unwrap();
+    let view = hexview::HexView::new(&buffer);
+    println!("{}", format!("{view}"));
+    loop {
+        let selection = display_menu(&MENU_ITEMS);
+        match handle_user_action(selection, &mut buffer, &path_file) {
+            Ok(_) => continue,
+            Err("User requested exit") => break,
+            Err(e) => println!("Error: {}", e),
+        }
+    }
+}
 
 fn get_file_path() -> String {
     Input::with_theme(&ColorfulTheme::default())
@@ -31,28 +46,21 @@ fn display_menu(items: &[&str]) -> usize {
         .expect("Failed to get menu selection")
 }
 
-fn handle_user_action(selection: usize, items: &[&str], buffer: &mut Vec<u8>, path_file: &str) {
-    if items[selection] == "read a byte" {
-        read_byte(buffer);
-    } else if items[selection] == "change some bytes" {
-        change_bytes(buffer, path_file);
-    } else if items[selection] == "exit" {
-        exit(0);
+fn handle_user_action(selection: usize, buffer: &mut Vec<u8>, path_file: &str) -> Result<(), &'static str> {
+    match selection {
+        0 => {
+            read_byte(buffer);
+            Ok(())
+        },
+        1 => {
+            change_bytes(buffer, path_file);
+            Ok(())
+        },
+        2 => Err("User requested exit"),
+        _ => Err("Invalid selection"),
     }
 }
 
-fn main() {
-    let path_file = get_file_path();
-    let mut buffer = read_file(&path_file);
-    let view = hexview::HexView::new(&buffer);
-    println!("{}", format!("{view}"));
-
-    let items = vec!["read a byte", "change some bytes", "exit"];
-    loop {
-        let selection = display_menu(&items);
-        handle_user_action(selection, &items, &mut buffer, &path_file);
-    }
-}
 fn change_bytes(buffer: &mut Vec<u8>, path_file: &str) {
     let how_many: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Enter the number of byte to change")
@@ -71,8 +79,9 @@ fn change_bytes(buffer: &mut Vec<u8>, path_file: &str) {
             .with_prompt("Enter the address of the byte to change")
             .validate_with(|the_address: &String| -> Result<(), &str> {
                 match u64::from_str_radix(the_address, 16) {
-                    Ok(_) => Ok(()),
-                    Err(_) => Err("This is not an hexadecimal string")
+                    Ok(the_address) if the_address < buffer.len() as u64 => Ok(()),
+                    Ok(_) => Err("Address out of range"),
+                    Err(_) => Err("This is not a valid hexadecimal string")
                 }
             })
             .interact_text()
@@ -93,7 +102,7 @@ fn change_bytes(buffer: &mut Vec<u8>, path_file: &str) {
         n += 1;
     }
     let view = hexview::HexView::new(&buffer);
-    println!("{}", format!("{view}"));
+    println!("{view}");
     if Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt("Do you want to save the change?")
         .default(true)
@@ -101,29 +110,50 @@ fn change_bytes(buffer: &mut Vec<u8>, path_file: &str) {
         .interact()
         .unwrap()
     {
-        fs::write(Path::new(&path_file.replacen(".pdf", "-new.pdf", 1)), buffer).expect("Unable to write file");
-        println!("the new file is created");
+        if fs::write(Path::new(&path_file.replacen(".pdf", "-new.pdf", 1)), buffer).is_ok() {
+            println!("the new file is created");
+        }else{
+            println!("failed to create the new file");
+        }
     } else {
         println!("nevermind then :(");
     }
 }
-fn read_byte(buffer: &Vec<u8>) -> (usize, &u8){
-    let byte_to_read: String = Input::with_theme(&ColorfulTheme::default())
+fn read_byte(buffer: &Vec<u8>) -> (usize, &u8) {
+    let addr_to_read: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Enter the address of the byte to read")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            match u64::from_str_radix(input, 16) {
+                Ok(addr) if addr < buffer.len() as u64 => Ok(()),
+                Ok(_) => Err("Address out of range"),
+                Err(_) => Err("This is not a valid hexadecimal string")
+            }
+        })
         .interact_text()
         .unwrap();
-    let byte_to_int = i64::from_str_radix(&byte_to_read, 16).expect("bad hex string address");
-    let byte_int = buffer.get(byte_to_int as usize);
-    println!("The byte at address '{}' is '{:?}'", byte_to_read, byte_int.unwrap());
+    let addr_in_int = usize::from_str_radix(&addr_to_read, 16).expect("Invalid hexadecimal string");
+    let byte = buffer.get(addr_in_int).expect("Invalid hexadecimal string");
+    println!("The byte at address '{}' is '{:02X}'", addr_to_read, byte);
     println!();
-    (byte_to_int as usize, byte_int.unwrap())
+    (addr_in_int, byte)
 }
 
-// lit les données d'un fichier dans une string
-fn read_file(path_file: &str) -> Vec<u8> {
-    let mut contents: Vec<u8> = Vec::new();
-    let file = File::open(path_file).unwrap();
+fn read_file_buffer(path_file: &str) -> Result<Vec<u8>, std::io::Error> {
+    let mut contents = Vec::new();
+    let file = match File::open(path_file) {
+        Ok(file) => file,
+        Err(e) => {
+            println!("Error opening file: {}", e);
+            return Err(e);
+        }
+    };
     let mut buf_reader = BufReader::new(file);
-    buf_reader.read_to_end(&mut contents).expect("fail to read file");
-    contents
+    match buf_reader.read_to_end(&mut contents) {
+        Ok(_) => Ok(contents),
+        Err(e) => {
+            println!("Error reading file: {}", e);
+            Err(e)
+        }
+    }
 }
+
